@@ -4,7 +4,7 @@
 #include "verilated.h"
 #include "verilated_vcd_c.h"
 
-#define MAXTICKS 1000
+#define MAXTICKS 25
 #define cout std::cout
 #ifndef	TESTB_H
 #define	TESTB_H
@@ -102,9 +102,15 @@ int main(int argc, char **argv) {
 		testBench->tick();
 		if (testBench->m_core->memwrite)
 		{
+			cout << "DataAdress:" << testBench->m_core->dataadr << ". WrittenValue:" << testBench->m_core->writedata << std::endl;
 			if(testBench->m_core->dataadr == 84 & testBench->m_core->writedata == 7)
 			{
-				cout << "WE GOT HIM\n";
+				cout << "7 was written to 84 memory cell\n";
+			}
+
+			if(testBench->m_core->dataadr == 84 & testBench->m_core->writedata == 14)
+			{
+				cout << "14 (7 shifted by 1) was written to 85 memory cell\n";
 				break;
 			}
 		}

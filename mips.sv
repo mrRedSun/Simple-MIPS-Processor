@@ -1,10 +1,10 @@
 
 // files needed for simulation:
-//  mipsttest.v
 //  mipstop.v
 //  mipsmem.v
 //  mips.v
 //  mipsparts.v
+`include "mipsparts.sv"
 
 // single-cycle MIPS processor
 module mips(input  logic        clk, reset,
@@ -17,7 +17,7 @@ module mips(input  logic        clk, reset,
   logic        memtoreg, branch,
                pcsrc, zero,
                alusrc, regdst, regwrite, jump;
-  logic [2:0]  alucontrol;
+  logic [3:0]  alucontrol;
 
   controller c(instr[31:26], instr[5:0], zero,
                memtoreg, memwrite, pcsrc,
@@ -36,7 +36,7 @@ module controller(input  logic [5:0] op, funct,
                   output logic       pcsrc, alusrc,
                   output logic       regdst, regwrite,
                   output logic       jump,
-                  output logic [2:0] alucontrol);
+                  output logic [3:0] alucontrol);
 
   logic [1:0] aluop;
   logic       branch;
@@ -76,19 +76,21 @@ endmodule
 
 module aludec(input  logic [5:0] funct,
               input  logic [1:0] aluop,
-              output logic [2:0] alucontrol);
+              output logic [3:0] alucontrol);
 
   always_comb
     case(aluop)
-      2'b00: alucontrol <= 3'b010;  // add
-      2'b01: alucontrol <= 3'b110;  // sub
+      2'b00: alucontrol <= 4'b0010;  // add
+      2'b01: alucontrol <= 4'b1010; // sub
+      2'b11: alucontrol <= 4'b1011; // slt
       default: case(funct)          // RTYPE
-          6'b100000: alucontrol <= 3'b010; // ADD
-          6'b100010: alucontrol <= 3'b110; // SUB
-          6'b100100: alucontrol <= 3'b000; // AND
-          6'b100101: alucontrol <= 3'b001; // OR
-          6'b101010: alucontrol <= 3'b111; // SLT
-          default:   alucontrol <= 3'bxxx; // ???
+          6'b100000: alucontrol <= 4'b0010; // ADD
+          6'b100010: alucontrol <= 4'b1010; // SUB
+          6'b100100: alucontrol <= 4'b0000; // AND
+          6'b100101: alucontrol <= 4'b0001; // OR
+          6'b101010: alucontrol <= 4'b1011; // SLT
+          6'b000000: alucontrol <= 4'b0100; // SLL
+          default:   alucontrol <= 4'bxxxx; // ???
         endcase
     endcase
 endmodule
@@ -97,7 +99,7 @@ module datapath(input  logic        clk, reset,
                 input  logic        memtoreg, pcsrc,
                 input  logic        alusrc, regdst,
                 input  logic        regwrite, jump,
-                input  logic [2:0]  alucontrol,
+                input  logic [3:0]  alucontrol,
                 output logic        zero,
                 output logic [31:0] pc,
                 input  logic [31:0] instr,
@@ -135,26 +137,28 @@ module datapath(input  logic        clk, reset,
   mux2 #(32)  srcbmux(writedata, signimm, alusrc,
                       srcb);
   alu         alu(.a(srca), .b(srcb), .f(alucontrol),
+                  .shamt(instr[10:6]),
                   .y(aluout), .zero(zero));
 endmodule
 
 module alu(
     input   logic [31:0] a, b,
-    input   logic [2:0] f,
+    input   logic [3:0] f,
+    input   logic [4:0] shamt,
     output  logic [31:0] y,
     output  logic zero, overflow
 );
-            logic [31:0] s, bout;
+    logic [31:0] s, bout;
  
-    assign bout = f[2] ? ~b : b;
-    assign s = a + bout + f[2];
- 
+    assign bout = f[3] ? ~b : b;
+    assign s = a + bout + f[3];
     always_comb
-        case (f[1:0])
-            2'b00: y <= a & bout;
-            2'b01: y <= a | bout;
-            2'b10: y <= s;
-            2'b11: y <= s[31];
+        case (f[2:0])
+            3'b000: y <= a & bout;
+            3'b001: y <= a | bout;
+            3'b010: y <= s;
+            3'b011: y <= s[31];
+            3'b100: y <= (bout << shamt); 
         endcase
     assign zero = (y == 32'b0);
     always_comb

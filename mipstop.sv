@@ -1,3 +1,5 @@
+`include "mipsmem.sv"
+
 module top(input         clk, reset, 
            output [31:0] writedata, dataadr, 
            output        memwrite);
