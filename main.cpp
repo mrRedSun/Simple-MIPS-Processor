@@ -105,16 +105,26 @@ int main(int argc, char **argv) {
 			cout << "DataAdress:" << testBench->m_core->dataadr << ". WrittenValue:" << testBench->m_core->writedata << std::endl;
 			if(testBench->m_core->dataadr == 84 & testBench->m_core->writedata == 7)
 			{
-				cout << "7 was written to 84 memory cell\n";
+				cout << "7 was written to 84 memory cell" << std::endl;
 			}
-
+			else
 			if(testBench->m_core->dataadr == 84 & testBench->m_core->writedata == 14)
 			{
-				cout << "14 (7 shifted by 1) was written to 85 memory cell\n";
-				break;
+				cout << "14 (7 shifted by 1) was written to 85 memory cell\n" << std::endl;
 			}
+			else
+			if(testBench->m_core->dataadr == 84 & testBench->m_core->writedata == 65536)
+			{
+				cout << " LUI command of 1 outputed:" << testBench->m_core->writedata << std::endl;
+			}
+			else 
+			if(testBench->m_core->dataadr == 42 & testBench->m_core->writedata == 0)
+			{
+				cout << " SLTI outputed 0 (5000 really is less then 65536, let's be honest):" << testBench->m_core->writedata << std::endl;
+				// break;
+			}					
 		}
 	}
 
-	cout << "Simulation ended\n";
+	cout << "Testbench simulation ended" << std::endl;
 }

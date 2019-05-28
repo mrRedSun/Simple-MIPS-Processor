@@ -16,61 +16,72 @@ module mips(input  logic        clk, reset,
 
   logic        memtoreg, branch,
                pcsrc, zero,
-               alusrc, regdst, regwrite, jump;
+               regdst, regwrite, jump;
   logic [3:0]  alucontrol;
+  logic [1:0] alusrc;
+  logic ltez;
 
   controller c(instr[31:26], instr[5:0], zero,
                memtoreg, memwrite, pcsrc,
                alusrc, regdst, regwrite, jump,
-               alucontrol);
+               alucontrol, ltez);
   datapath dp(clk, reset, memtoreg, pcsrc,
               alusrc, regdst, regwrite, jump,
               alucontrol,
               zero, pc, instr,
-              aluout, writedata, readdata);
+              aluout, writedata, readdata, ltez);
 endmodule
 
 module controller(input  logic [5:0] op, funct,
                   input  logic       zero,
                   output logic       memtoreg, memwrite,
-                  output logic       pcsrc, alusrc,
+                  output logic       pcsrc,
+                  output logic [1:0] alusrc,
                   output logic       regdst, regwrite,
                   output logic       jump,
-                  output logic [3:0] alucontrol);
+                  output logic [3:0] alucontrol,
+                  input  logic       ltez);
 
   logic [1:0] aluop;
   logic       branch;
+  logic       blez;
 
   maindec md(op, memtoreg, memwrite, branch,
              alusrc, regdst, regwrite, jump,
-             aluop);
+             aluop, blez);
   aludec  ad(funct, aluop, alucontrol);
 
-  assign pcsrc = branch & zero;
+  
+  assign pcsrc = (branch & zero) | (blez & ltez);
 endmodule
 
 module maindec(input  logic [5:0] op,
                output logic       memtoreg, memwrite,
-               output logic       branch, alusrc,
+               output logic       branch, 
+               output logic [1:0] alusrc,
                output logic       regdst, regwrite,
                output logic       jump,
-               output logic [1:0] aluop);
+               output logic [1:0] aluop,
+               output logic       blez);
 
-  logic [8:0] controls;
+  logic [10:0] controls;
 
   assign {regwrite, regdst, alusrc,
           branch, memwrite,
-          memtoreg, jump, aluop} = controls;
+          memtoreg, aluop, jump, blez} = controls;
 
   always_comb
     case(op)
-      6'b000000: controls <= 9'b110000010; //Rtype
-      6'b100011: controls <= 9'b101001000; //LW
-      6'b101011: controls <= 9'b001010000; //SW
-      6'b000100: controls <= 9'b000100001; //BEQ
-      6'b001000: controls <= 9'b101000000; //ADDI
-      6'b000010: controls <= 9'b000000100; //J
-      default:   controls <= 9'bxxxxxxxxx; //???
+      6'b000000: controls = 11'b11000001000; //Rtype
+      6'b100011: controls = 11'b10010010000; //LW
+      6'b101011: controls = 11'b00010100000; //SW
+      6'b000100: controls = 11'b00001000100; //BEQ
+      6'b001000: controls = 11'b10010000000; //ADDI
+      6'b000010: controls = 11'b00000000010; //J
+      6'b001010: controls = 11'b10010001100; //SLTI
+      6'b001111: controls = 11'b10100000000; //LUI
+      6'b000110: controls = 11'b00000000101; //BLEZ
+      default:   controls = 11'bxxxxxxxxxxx; //???
     endcase
 endmodule
 
@@ -97,20 +108,24 @@ endmodule
 
 module datapath(input  logic        clk, reset,
                 input  logic        memtoreg, pcsrc,
-                input  logic        alusrc, regdst,
+                input  logic [1:0]  alusrc, 
+                input  logic        regdst,
                 input  logic        regwrite, jump,
                 input  logic [3:0]  alucontrol,
                 output logic        zero,
                 output logic [31:0] pc,
                 input  logic [31:0] instr,
                 output logic [31:0] aluout, writedata,
-                input  logic [31:0] readdata);
+                input  logic [31:0] readdata,
+                output logic        ltez);
 
   logic [4:0]  writereg;
   logic [31:0] pcnext, pcnextbr, pcplus4, pcbranch;
   logic [31:0] signimm, signimmsh;
+  logic [31:0] upperimm;
   logic [31:0] srca, srcb;
   logic [31:0] result;
+  logic [31:0] memdata;
 
   // next PC logic
   flopr #(32) pcreg(clk, reset, pcnext, pc);
@@ -132,13 +147,16 @@ module datapath(input  logic        clk, reset,
   mux2 #(32)  resmux(aluout, readdata,
                      memtoreg, result);
   signext     se(instr[15:0], signimm);
+  upimm       ui(instr[15:0], upperimm); 
 
   // ALU logic
-  mux2 #(32)  srcbmux(writedata, signimm, alusrc,
-                      srcb);
+  mux3 #(32)  srcbmux(writedata, signimm,
+                      upperimm, alusrc,
+                      srcb);      // LUI
+
   alu         alu(.a(srca), .b(srcb), .f(alucontrol),
                   .shamt(instr[10:6]),
-                  .y(aluout), .zero(zero));
+                  .y(aluout), .zero(zero), .ltez(ltez));
 endmodule
 
 module alu(
@@ -146,7 +164,7 @@ module alu(
     input   logic [3:0] f,
     input   logic [4:0] shamt,
     output  logic [31:0] y,
-    output  logic zero, overflow
+    output  logic zero, ltez, overflow
 );
     logic [31:0] s, bout;
  
@@ -161,6 +179,7 @@ module alu(
             3'b100: y <= (bout << shamt); 
         endcase
     assign zero = (y == 32'b0);
+    assign ltez = zero | s[31];
     always_comb
         case (f[2:1])
             2'b01: overflow <= a[31] & b[31] & ~s[31] | ~a[31] & ~b[31] & s[31];
